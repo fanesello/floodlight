@@ -1,6 +1,5 @@
 net.floodlightcontroller.core.internal.FloodlightProvider
 net.floodlightcontroller.storage.memory.MemoryStorageSource
-net.floodlightcontroller.flowcache.FlowReconcileManager
 net.floodlightcontroller.hub.Hub
 net.floodlightcontroller.jython.JythonDebugInterface
 net.floodlightcontroller.debugcounter.DebugCounterServiceImpl
@@ -19,11 +18,8 @@ org.sdnplatform.sync.internal.SyncTorture
 net.floodlightcontroller.staticflowentry.StaticFlowEntryPusher
 net.floodlightcontroller.testmodule.TestModule
 net.floodlightcontroller.topology.TopologyManager
-net.floodlightcontroller.forwarding.Forwarding
-net.floodlightcontroller.loadbalancer.LoadBalancer
 net.floodlightcontroller.linkdiscovery.internal.LinkDiscoveryManager
 net.floodlightcontroller.devicemanager.internal.DeviceManagerImpl
-net.floodlightcontroller.firewall.Firewall
-net.floodlightcontroller.accesscontrollist.ACL
 net.floodlightcontroller.dhcpserver.DHCPServer
 net.floodlightcontroller.learningswitch.LearningSwitch
+net.floodlightcontroller.greennetwork.GreenNetworkController

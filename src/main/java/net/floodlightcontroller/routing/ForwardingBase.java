@@ -194,7 +194,7 @@ public abstract class ForwardingBase implements IOFMessageListener {
 	 * @param dstSwPort Destination switch port for final hop
 	 * @param cookie The cookie to set in each flow_mod
 	 * @param cntx The floodlight context
-	 * @param reqeustFlowRemovedNotifn if set to true then the switch would
+	 * @param requestFlowRemovedNotifn if set to true then the switch would
 	 * send a flow mod removal notification when the flow mod expires
 	 * @param doFlush if set to true then the flow mod would be immediately
 	 *        written to the switch
@@ -216,7 +216,7 @@ public abstract class ForwardingBase implements IOFMessageListener {
 	})
 	public boolean pushRoute(Route route, Match match, OFPacketIn pi,
 			DatapathId pinSwitch, U64 cookie, FloodlightContext cntx,
-			boolean reqeustFlowRemovedNotifn, boolean doFlush,
+			boolean requestFlowRemovedNotifn, boolean doFlush,
 			OFFlowModCommand flowModCommand) {
 
 		boolean srcSwitchIncluded = false;
