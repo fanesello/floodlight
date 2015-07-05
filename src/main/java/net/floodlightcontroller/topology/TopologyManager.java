@@ -143,6 +143,9 @@ public class TopologyManager implements IFloodlightModule, ITopologyService, IRo
 	protected SingletonTask newInstanceTask;
 	private Date lastUpdateTime;
 
+	// Switches that will have the ports blocked when calculating routes.
+	protected Set<DatapathId> switchesToBlock;
+
 	/**
 	 * Flag that indicates if links (direct/tunnel/multihop links) were
 	 * updated as part of LDUpdate.
@@ -858,6 +861,7 @@ public class TopologyManager implements IFloodlightModule, ITopologyService, IRo
 		topologyAware = new ArrayList<ITopologyListener>();
 		ldUpdates = new LinkedBlockingQueue<LDUpdate>();
 		haListener = new HAListenerDelegate();
+		switchesToBlock = new HashSet<DatapathId>();
 		registerTopologyDebugCounters();
 		registerTopologyDebugEvents();
 	}
@@ -1181,7 +1185,7 @@ public class TopologyManager implements IFloodlightModule, ITopologyService, IRo
 	 * topology was created or not.
 	 */
 	protected boolean createNewInstance(String reason) {
-		Set<NodePortTuple> blockedPorts = new HashSet<NodePortTuple>();
+		Set<NodePortTuple> blockedPorts = blockPorts();
 
 		if (!linksUpdated) return false;
 
@@ -1237,6 +1241,18 @@ public class TopologyManager implements IFloodlightModule, ITopologyService, IRo
 						0);
 		eventCategory.newEventWithFlush(new TopologyEvent(reason, topologyInfo));
 		return true;
+	}
+
+	private Set<NodePortTuple> blockPorts() {
+		Set<NodePortTuple> portsToBlock = new HashSet<NodePortTuple>();
+		if (!switchesToBlock.isEmpty()) {
+			for (NodePortTuple nodePortTuple : switchPortLinks.keySet()) {
+				if (switchesToBlock.contains(nodePortTuple.getNodeId())) {
+					portsToBlock.add(nodePortTuple);
+				}
+			}
+		}
+		return portsToBlock;
 	}
 
 	/**
@@ -1530,5 +1546,10 @@ public class TopologyManager implements IFloodlightModule, ITopologyService, IRo
 			ports.removeAll(qPorts);
 
 		return ports;
+	}
+
+	@Override
+	public void setSwitchesToBlock(Set<DatapathId> switchesToBlock) {
+		this.switchesToBlock = switchesToBlock;
 	}
 }

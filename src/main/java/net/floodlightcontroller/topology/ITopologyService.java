@@ -210,4 +210,11 @@ public interface ITopologyService extends IFloodlightService  {
 	 * has only quarantined ports. Will never return null.
 	 */
 	public Set<OFPort> getPorts(DatapathId sw);
+
+	/**
+	 * Sets the switches that must have their ports blocked.
+	 * @param switchesToBlock A set containing the switches' {@link DatapathId}.
+	 */
+	public void setSwitchesToBlock(Set<DatapathId> switchesToBlock);
+
 }

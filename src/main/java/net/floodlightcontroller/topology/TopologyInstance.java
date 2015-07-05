@@ -668,7 +668,7 @@ public class TopologyInstance {
             DatapathId dstId, OFPort dstPort, U64 cookie) {
 
 
-        // Return null the route source and desitnation are the
+        // Return null the route source and destination are the
         // same switchports.
         if (srcId.equals(dstId) && srcPort.equals(dstPort))
             return null;

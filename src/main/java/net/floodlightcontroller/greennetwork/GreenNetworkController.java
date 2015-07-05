@@ -1,6 +1,7 @@
 package net.floodlightcontroller.greennetwork;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -38,12 +39,19 @@ public class GreenNetworkController implements IFloodlightModule, IOFMessageList
 
 	protected static Logger logger = LoggerFactory.getLogger(GreenNetworkController.class);
 	
+	// FIXME Better way to set the switches, using hard coded for now
+	static final Set<DatapathId> switchesToBeBlocked = new HashSet<DatapathId>(Arrays.asList(
+			DatapathId.of("00:00:00:00:00:00:00:08"),
+			DatapathId.of("00:00:00:00:00:00:00:09"),
+			DatapathId.of("00:00:00:00:00:00:00:0a")
+			));
+
 	protected IFloodlightProviderService floodlightProvider;
 	protected IOFSwitchService switchService;
 	protected ITopologyService topologyService;
 	protected IRoutingService routingService;
 	protected IDeviceService deviceService;
-	
+
 	private final GNCPacketInProcessor packetProcessor = new GNCPacketInProcessor(this);
 	
 	@Override
@@ -123,14 +131,27 @@ public class GreenNetworkController implements IFloodlightModule, IOFMessageList
 	public void topologyChanged(List<LDUpdate> linkUpdates) {
 		logger.info("Topology updated.");
 		printSwitches();
+
+		boolean energySaving = false;
+		Set<DatapathId> switchesToBlock = new HashSet<DatapathId>();
+		if (energySaving) {
+			Set<DatapathId> allDpids = switchService.getAllSwitchDpids();
+
+			for (DatapathId dpid : switchesToBeBlocked) {
+				// Check if switch is present in topology, then add it to the block list
+				if (allDpids.contains(dpid))
+					switchesToBlock.add(dpid);
+			}
+		}
+		topologyService.setSwitchesToBlock(switchesToBlock);
 	}
 	
 	private void printSwitches() {
 		Set<DatapathId> dpIds = new HashSet<DatapathId>();
-		
+
 		dpIds = switchService.getAllSwitchDpids();
 		StringBuilder output = new StringBuilder(String.valueOf(dpIds.size()));
-		
+
 		output.append(" switches found:\n");
 		for (DatapathId datapathId : dpIds) {
 			output.append(datapathId.toString());
