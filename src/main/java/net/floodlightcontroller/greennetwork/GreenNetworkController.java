@@ -31,7 +31,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 
+ * Network controller that switches between a full topology routing (shortest path, Dijkstra) and
+ * an energy saving topology routing (excluding unnecessary switches).
  * @author felipe.nesello
  *
  */
@@ -88,13 +89,11 @@ public class GreenNetworkController implements IFloodlightModule, IOFMessageList
 
 	@Override
 	public Collection<Class<? extends IFloodlightService>> getModuleServices() {
-		// TODO Auto-generated method stub
 		return null;
 	}
 
 	@Override
 	public Map<Class<? extends IFloodlightService>, IFloodlightService> getServiceImpls() {
-		// TODO Auto-generated method stub
 		return null;
 	}
 

@@ -122,7 +122,6 @@ public class GNCPacketInProcessor {
 		SwitchPort dstSwitchPort = dstDevice.getAttachmentPoints()[0];
 
 		if (!srcSwitchPort.equals(dstSwitchPort)) {
-			// TODO propose a new routing service that routes through a energy saving path
 			Route route = controller.routingService.getRoute(
 					srcSwitchPort.getSwitchDPID(), srcSwitchPort.getPort(),
 					dstSwitchPort.getSwitchDPID(), dstSwitchPort.getPort(),
@@ -141,7 +140,7 @@ public class GNCPacketInProcessor {
 		List<NodePortTuple> switchPortList = route.getPath();
 		boolean hasPushedAllHops = true;
 
-		// FIXME improve this iteration to iterate on switches, and not depending on indexes
+		// FIXME improve this iteration to iterate over switches, and not depending on indexes
 		for (int indx = switchPortList.size() - 1; indx > 0; indx -= 2) {
 			DatapathId switchDPID = switchPortList.get(indx).getNodeId();
 			IOFSwitch sw = controller.switchService.getSwitch(switchDPID);
