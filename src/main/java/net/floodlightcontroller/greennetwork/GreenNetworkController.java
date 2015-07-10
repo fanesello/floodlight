@@ -8,13 +8,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import net.floodlightcontroller.core.FloodlightContext;
 import net.floodlightcontroller.core.IFloodlightProviderService;
 import net.floodlightcontroller.core.IOFMessageListener;
 import net.floodlightcontroller.core.IOFSwitch;
+import net.floodlightcontroller.core.annotations.LogMessageCategory;
 import net.floodlightcontroller.core.internal.IOFSwitchService;
 import net.floodlightcontroller.core.module.FloodlightModuleContext;
 import net.floodlightcontroller.core.module.FloodlightModuleException;
@@ -27,6 +27,7 @@ import net.floodlightcontroller.threadpool.IThreadPoolService;
 import net.floodlightcontroller.topology.ITopologyListener;
 import net.floodlightcontroller.topology.ITopologyService;
 
+import org.apache.commons.lang3.StringUtils;
 import org.projectfloodlight.openflow.protocol.OFMessage;
 import org.projectfloodlight.openflow.protocol.OFPacketIn;
 import org.projectfloodlight.openflow.protocol.OFType;
@@ -40,13 +41,10 @@ import org.slf4j.LoggerFactory;
  * @author felipe.nesello
  *
  */
+@LogMessageCategory("Green Network Controller")
 public class GreenNetworkController implements IFloodlightModule, IOFMessageListener, ITopologyListener {
 
-	private static final int NETWORK_STATE_DELAY = 3;
-	private static NetworkState networkState;
-
-	protected static Logger logger = LoggerFactory.getLogger(GreenNetworkController.class);
-
+	static GNCNetworkState currentNetworkState;
 	// FIXME Better way to set the switches, using hard coded for now
 	static final Set<DatapathId> switchesToBeBlocked = new HashSet<DatapathId>(Arrays.asList(
 			DatapathId.of("00:00:00:00:00:00:00:08"),
@@ -54,15 +52,26 @@ public class GreenNetworkController implements IFloodlightModule, IOFMessageList
 			DatapathId.of("00:00:00:00:00:00:00:0a")
 			));
 
-	protected IThreadPoolService threadPoolService;
-	protected IFloodlightProviderService floodlightProvider;
-	protected IOFSwitchService switchService;
-	protected ITopologyService topologyService;
-	protected IRoutingService routingService;
-	protected IDeviceService deviceService;
+	private static final String LINE_BREAK = "\n";
+	private static final String WHITE_SPACE = " ";
 
-	private final GNCPacketInProcessor packetProcessor = new GNCPacketInProcessor(this);
-	
+	private static final int NETWORK_STATE_DELAY = 3;
+	private static final int NETWORK_MONITOR_DELAY = 15;
+
+	private static Logger logger = LoggerFactory.getLogger(GreenNetworkController.class);
+
+	// Floodlight services dependencies
+	private IThreadPoolService threadPoolService;
+	private IFloodlightProviderService floodlightProvider;
+	public IOFSwitchService switchService;
+	private ITopologyService topologyService;
+	private IRoutingService routingService;
+
+	// Green Network Controller dependencies
+	private GNCPacketInProcessor packetProcessor;
+	private GNCNetworkStateMonitor networkMonitor;
+	private GNCNetworkStateManager networkManager;
+
 	@Override
 	public String getName() {
 		return GreenNetworkController.class.getSimpleName();
@@ -106,42 +115,51 @@ public class GreenNetworkController implements IFloodlightModule, IOFMessageList
 		topologyService = context.getServiceImpl(ITopologyService.class);
 		switchService = context.getServiceImpl(IOFSwitchService.class);
 		routingService = context.getServiceImpl(IRoutingService.class);
-		deviceService = context.getServiceImpl(IDeviceService.class);
 		threadPoolService = context.getServiceImpl(IThreadPoolService.class);
 		logger = LoggerFactory.getLogger(GreenNetworkController.class);
-		
-		networkState = NetworkState.FULL_TOPOLOGY;
+
+		packetProcessor = new GNCPacketInProcessor(switchService, topologyService, routingService);
+		networkManager = new GNCNetworkStateManager(switchService, topologyService);
+		networkMonitor = new GNCNetworkStateMonitor(switchService, routingService);
+
+		currentNetworkState = GNCNetworkState.FULL_TOPOLOGY;
 	}
 
 	@Override
 	public void startUp(FloodlightModuleContext context) throws FloodlightModuleException {
 		floodlightProvider.addOFMessageListener(OFType.PACKET_IN, this);
 		topologyService.addListener(this);
-		
+
 		ScheduledExecutorService scheduledExecutor = threadPoolService.getScheduledExecutor();
-		
+
 		final Runnable networkUpdater = new Runnable() {
 			public void run() {
-				changeNetworkState();
-				printSwitches();
+				networkManager.changeState();
 			}
 		};
-		final ScheduledFuture<?> beeperHandle = scheduledExecutor.scheduleAtFixedRate(networkUpdater, NETWORK_STATE_DELAY, NETWORK_STATE_DELAY, TimeUnit.MINUTES);
+		scheduledExecutor.scheduleAtFixedRate(networkUpdater, NETWORK_STATE_DELAY, NETWORK_STATE_DELAY, TimeUnit.MINUTES);
 		
-//		ses.schedule(new Runnable() {
-//			public void run() { beeperHandle.cancel(true); }
-//		}, 60, TimeUnit.SECONDS);
+		final Runnable netMonitor = new Runnable() {
+			public void run() {
+				networkMonitor.monitorState();
+			}
+		};
+		scheduledExecutor.scheduleAtFixedRate(netMonitor, NETWORK_MONITOR_DELAY, NETWORK_MONITOR_DELAY, TimeUnit.SECONDS);
 	}
 
 	@Override
 	public net.floodlightcontroller.core.IListener.Command receive(IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
 		switch (msg.getType()) {
 		case PACKET_IN:
-			logger.info("Got a packet in message from switch {}.", sw.getId().toString());
-			
+			if (logger.isTraceEnabled())
+				logger.trace("Got a packet in message from switch {}.", sw.getId().toString());
+
 			if (packetProcessor.processPacket(sw, cntx, (OFPacketIn) msg)) {
-				logger.info("Packet processed successfully!");
-			}
+				if (logger.isTraceEnabled())
+					logger.trace("Packet {} from switch {} processed successfully!", (OFPacketIn) msg, sw.getId().toString());
+			} else
+				if (logger.isTraceEnabled())
+					logger.trace("Error on processing packet {} from switch {}", (OFPacketIn) msg, sw.getId().toString());
 		default:
 			break;
 		}
@@ -150,39 +168,22 @@ public class GreenNetworkController implements IFloodlightModule, IOFMessageList
 
 	@Override
 	public void topologyChanged(List<LDUpdate> linkUpdates) {
-		logger.info("Topology updated.");
-		printSwitches();
-
-		boolean energySaving = true;
-		Set<DatapathId> switchesToBlock = new HashSet<DatapathId>();
-		if (energySaving) {
-			Set<DatapathId> allDpids = switchService.getAllSwitchDpids();
-
-			for (DatapathId dpid : switchesToBeBlocked) {
-				// Check if switch is present in topology, then add it to the block list
-				if (allDpids.contains(dpid))
-					switchesToBlock.add(dpid);
-			}
+		if (logger.isTraceEnabled()) {
+			logger.trace("Topology updated.");
+			printSwitches();
 		}
-		topologyService.setSwitchesToBlock(switchesToBlock);
-	}
-	
-	private void changeNetworkState() {
-		
 	}
 
 	private void printSwitches() {
-		Set<DatapathId> dpIds = new HashSet<DatapathId>();
+		Set<DatapathId> allDpids = switchService.getAllSwitchDpids();
 
-		dpIds = switchService.getAllSwitchDpids();
-		StringBuilder output = new StringBuilder(String.valueOf(dpIds.size()));
+		StringBuilder output = new StringBuilder(String.valueOf(allDpids.size()))
+		.append(WHITE_SPACE)
+		.append("switches found:")
+		.append(LINE_BREAK)
+		.append(StringUtils.join(allDpids, LINE_BREAK));
 
-		output.append(" switches found:\n");
-		for (DatapathId datapathId : dpIds) {
-			output.append(datapathId.toString());
-			output.append("\n");
-		}
-		logger.info(output.toString());
+		logger.trace(output.toString());
 	}
 
 }

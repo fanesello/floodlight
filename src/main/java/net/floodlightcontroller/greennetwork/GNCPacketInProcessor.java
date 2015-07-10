@@ -8,6 +8,8 @@ import java.util.List;
 import net.floodlightcontroller.core.FloodlightContext;
 import net.floodlightcontroller.core.IFloodlightProviderService;
 import net.floodlightcontroller.core.IOFSwitch;
+import net.floodlightcontroller.core.annotations.LogMessageCategory;
+import net.floodlightcontroller.core.internal.IOFSwitchService;
 import net.floodlightcontroller.core.util.AppCookie;
 import net.floodlightcontroller.devicemanager.IDevice;
 import net.floodlightcontroller.devicemanager.IDeviceService;
@@ -15,7 +17,9 @@ import net.floodlightcontroller.devicemanager.SwitchPort;
 import net.floodlightcontroller.forwarding.Forwarding;
 import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.packet.IPv4;
+import net.floodlightcontroller.routing.IRoutingService;
 import net.floodlightcontroller.routing.Route;
+import net.floodlightcontroller.topology.ITopologyService;
 import net.floodlightcontroller.topology.NodePortTuple;
 import net.floodlightcontroller.util.MatchUtils;
 import net.floodlightcontroller.util.OFMessageDamper;
@@ -45,6 +49,7 @@ import org.slf4j.LoggerFactory;
  * @author felipe.nesello
  *
  */
+@LogMessageCategory("Green Network Controller")
 public class GNCPacketInProcessor {
 
 	private static final int GNC_APP_ID = 16;
@@ -56,18 +61,22 @@ public class GNCPacketInProcessor {
 	private static int OFMESSAGE_DAMPER_CAPACITY = 10000;
 	private static int OFMESSAGE_DAMPER_TIMEOUT = 250; // ms
 
-	protected static Logger logger = LoggerFactory.getLogger(GNCPacketInProcessor.class);
+	private static Logger logger = LoggerFactory.getLogger(GNCPacketInProcessor.class);
 
+	private final IOFSwitchService switchService;
+	private final ITopologyService topologyService;
+	private final IRoutingService routingService;
 	private final OFMessageDamper messageDamper;
-	private final GreenNetworkController controller;
 
 	static {
-		AppCookie.registerApp(GNC_APP_ID, "GreenNetwork");
+		AppCookie.registerApp(GNC_APP_ID, "GreenNetworkController");
 	}
 	public static final U64 appCookie = AppCookie.makeCookie(GNC_APP_ID, 0);
 
-	public GNCPacketInProcessor(GreenNetworkController controller) {
-		this.controller = controller;
+	public GNCPacketInProcessor(IOFSwitchService swService, ITopologyService topoService, IRoutingService rtService) {
+		this.switchService = swService;
+		this.topologyService = topoService;
+		this.routingService = rtService;
 		this.messageDamper = new OFMessageDamper(OFMESSAGE_DAMPER_CAPACITY, EnumSet.of(OFType.FLOW_MOD), OFMESSAGE_DAMPER_TIMEOUT);
 	}
 
@@ -122,7 +131,7 @@ public class GNCPacketInProcessor {
 		SwitchPort dstSwitchPort = dstDevice.getAttachmentPoints()[0];
 
 		if (!srcSwitchPort.equals(dstSwitchPort)) {
-			Route route = controller.routingService.getRoute(
+			Route route = routingService.getRoute(
 					srcSwitchPort.getSwitchDPID(), srcSwitchPort.getPort(),
 					dstSwitchPort.getSwitchDPID(), dstSwitchPort.getPort(),
 					U64.of(0));
@@ -143,7 +152,7 @@ public class GNCPacketInProcessor {
 		// FIXME improve this iteration to iterate over switches, and not depending on indexes
 		for (int indx = switchPortList.size() - 1; indx > 0; indx -= 2) {
 			DatapathId switchDPID = switchPortList.get(indx).getNodeId();
-			IOFSwitch sw = controller.switchService.getSwitch(switchDPID);
+			IOFSwitch sw = switchService.getSwitch(switchDPID);
 
 			if (sw != null) {
 				OFFactory factory = sw.getOFFactory();
@@ -173,9 +182,10 @@ public class GNCPacketInProcessor {
 				.setPriority(FLOWMOD_DEFAULT_PRIORITY);
 
 				try {
-					logger.info("Pushing route flowmod routeIndx={} sw={} inPort={} outPort={}",
-							indx, sw, flowBuilder.getMatch().get(MatchField.IN_PORT), outPort);
-					
+					if (logger.isTraceEnabled())
+						logger.trace("Pushing route flowmod routeIndx={} sw={} inPort={} outPort={}",
+								indx, sw, flowBuilder.getMatch().get(MatchField.IN_PORT), outPort);
+
 					hasPushedAllHops &= messageDamper.write(sw, flowBuilder.build());
 
 					if (isSourceSwitch(packetInSwitch, sw)) {
@@ -264,8 +274,9 @@ public class GNCPacketInProcessor {
 	}
 
 	private boolean processAsBroadcast(IOFSwitch sw, OFPacketIn packetIn, OFPort ingressPort) {
-		if (!controller.topologyService.isIncomingBroadcastAllowed(sw.getId(), ingressPort)) {
-			logger.error("Broadcast not allowed on port {} of switch {}", ingressPort.toString(), sw.getId().toString());
+		if (!topologyService.isIncomingBroadcastAllowed(sw.getId(), ingressPort)) {
+			if (logger.isTraceEnabled())
+				logger.trace("Broadcast not allowed on port {} of switch {}", ingressPort.toString(), sw.getId().toString());
 			return false;
 		}
 
@@ -288,7 +299,8 @@ public class GNCPacketInProcessor {
 		packetOutBuilder.setData(packetIn.getData());
 
 		try {
-			logger.info("Writing flood PacketOut switch={} packet-in={} packet-out={}", sw.getId().toString(), packetIn, packetOutBuilder.build());
+			if (logger.isTraceEnabled())
+				logger.trace("Writing flood PacketOut switch={} packet-in={} packet-out={}", sw.getId().toString(), packetIn, packetOutBuilder.build());
 			return messageDamper.write(sw, packetOutBuilder.build());
 		} catch (IOException e) {
 			logger.error("Failure writing PacketOut switch={} packet-in={} packet-out={}", sw.getId().toString(), packetIn, packetOutBuilder.build(), e);

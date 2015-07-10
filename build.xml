@@ -61,6 +61,7 @@
         <include name="jackson-dataformat-yaml-2.1.4.jar"/>
         <include name="jackson-dataformat-csv-2.1.4.jar"/>
         <include name="slf4j-api-1.7.12.jar"/>
+	<include name="commons-lang3-3.4.jar"/>
         <include name="org.restlet.jar"/>
         <include name="org.restlet.ext.jackson.jar"/>
         <include name="org.restlet.ext.simple.jar"/>

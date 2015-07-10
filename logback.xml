@@ -12,4 +12,5 @@
   <logger name="net.floodlightcontroller" level="INFO"/>
   <logger name="net.floodlightcontroller.logging" level="INFO"/>
   <logger name="org.sdnplatform" level="INFO"/>
+  <logger name="net.floodlightcontroller.linkdiscovery" level="WARNING"/>
 </configuration>
